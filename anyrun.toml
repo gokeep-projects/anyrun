@@ -1,0 +1,52 @@
+uiPort = 5173
+
+[[apps]]
+name = "java-app"
+execute = "java"
+appPath = "E:/apps/my-app.jar"
+appType = "java"
+daemon = true
+args = "-Xmx512m"
+autostart = true
+timeout = 30
+
+[[apps]]
+name = "python-app"
+execute = "python"
+appPath = "E:/scripts/my_script.py"
+appType = "python"
+daemon = false
+args = "--env prod"
+autostart = false
+timeout = 60
+
+[[apps]]
+name = "node-app"
+execute = "npm"
+appPath = "start"
+appType = "node"
+daemon = false
+args = ""
+autostart = true
+timeout = 40
+
+[[apps]]
+name = "aaa"
+execute = "aaa"
+appPath = "aaaa"
+appType = "java"
+daemon = false
+args = "aaaa"
+autostart = false
+timeout = 30
+
+[[apps]]
+name = "bbbbb"
+execute = "bbbb"
+appPath = "bbbbb"
+appType = "java"
+daemon = false
+args = "bbbbbb"
+autostart = false
+timeout = 60
+
