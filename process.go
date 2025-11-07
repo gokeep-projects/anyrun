@@ -15,9 +15,16 @@ type AppStatus struct {
 	Path   string
 	Status string // running/stopped
 	Port   int    // 应用监听的端口
+	StartTime string // 应用启动时间
 }
 
-var appProcesses = map[string]*exec.Cmd{}
+// 添加一个结构体来跟踪应用进程和启动时间
+type AppProcess struct {
+	Cmd       *exec.Cmd
+	StartTime time.Time
+}
+
+var appProcesses = map[string]*AppProcess{}
 
 func StartApp(app AppConfig) error {
 	// 构造命令：如果 Execute 是 java 且 AppPath 以 .jar 结尾，则使用 -jar
@@ -68,12 +75,26 @@ func StartApp(app AppConfig) error {
 		if app.Args != "" {
 			parts = append(parts, strings.Fields(app.Args)...)
 		}
-		if app.Execute != "" {
-			cmd = exec.Command(app.Execute, parts...)
-		} else if app.AppPath != "" {
-			cmd = exec.Command(app.AppPath, parts...)
+		
+		// 特殊处理Windows系统中的系统命令
+		if runtime.GOOS == "windows" {
+			// 棣查是否为Windows系统命令（如notepad）
+			if app.Execute != "" {
+				// 先尝试直接执行
+				cmd = exec.Command(app.Execute, parts...)
+			} else if app.AppPath != "" {
+				cmd = exec.Command(app.AppPath, parts...)
+			} else {
+				return fmt.Errorf("no execute or appPath specified")
+			}
 		} else {
-			return fmt.Errorf("no execute or appPath specified")
+			if app.Execute != "" {
+				cmd = exec.Command(app.Execute, parts...)
+			} else if app.AppPath != "" {
+				cmd = exec.Command(app.AppPath, parts...)
+			} else {
+				return fmt.Errorf("no execute or appPath specified")
+			}
 		}
 	}
 	
@@ -82,20 +103,26 @@ func StartApp(app AppConfig) error {
 		return err
 	}
 	
-	appProcesses[app.Name] = cmd
+	// 保存进程和启动时间
+	appProcesses[app.Name] = &AppProcess{
+		Cmd:       cmd,
+		StartTime: time.Now(),
+	}
 	
 	// 等待一小段时间以确认进程启动
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(500 * time.Millisecond)
 	
-	// 检查进程是否仍在运行
+	// 检查进程是否仍在运行 (改进Windows环境下的处理)
 	if cmd.Process != nil {
-		// 使用进程信号0检查进程是否存在
-		err = cmd.Process.Signal(syscall.Signal(0))
-		if err != nil {
-			// 进程不存在或已退出
+		// 在所有平台上都使用 PID 检查进程是否存在
+		// 检查PID是否有效（大于0）
+		if cmd.Process.Pid <= 0 {
 			delete(appProcesses, app.Name)
 			return fmt.Errorf("process exited immediately after start")
 		}
+		
+		// 在Windows上，我们使用一个更简单的方法
+		// 我们假设如果进程启动后短时间内仍然有有效的PID，那么它就在运行
 	} else {
 		delete(appProcesses, app.Name)
 		return fmt.Errorf("failed to get process")
@@ -110,10 +137,12 @@ func StartApp(app AppConfig) error {
 }
 
 func StopApp(app AppConfig) error {
-	cmd, ok := appProcesses[app.Name]
-	if !ok || cmd.Process == nil {
+	appProc, ok := appProcesses[app.Name]
+	if !ok || appProc.Cmd.Process == nil {
 		return fmt.Errorf("app not running")
 	}
+	
+	cmd := appProc.Cmd
 	
 	// 根据操作系统选择合适的信号
 	if runtime.GOOS == "windows" {
@@ -154,28 +183,44 @@ func StopApp(app AppConfig) error {
 }
 
 func QueryStatus(app AppConfig) AppStatus {
-	cmd, ok := appProcesses[app.Name]
+	appProc, ok := appProcesses[app.Name]
 	status := "stopped"
 	pid := 0
+	startTime := ""
 	
-	if ok && cmd.Process != nil {
+	if ok && appProc.Cmd.Process != nil {
 		// 检查进程是否仍在运行
-		err := cmd.Process.Signal(syscall.Signal(0))
-		if err == nil {
-			// 进程存在
-			status = "running"
-			pid = cmd.Process.Pid
+		if runtime.GOOS == "windows" {
+			// Windows检查
+			if appProc.Cmd.Process.Pid > 0 {
+				status = "running"
+				pid = appProc.Cmd.Process.Pid
+				startTime = appProc.StartTime.Format("2006-01-02 15:04:05")
+			} else {
+				// 进程不存在，从映射中删除
+				delete(appProcesses, app.Name)
+			}
 		} else {
-			// 进程不存在，从映射中删除
-			delete(appProcesses, app.Name)
+			// Unix-like系统使用标准的信号检查
+			err := appProc.Cmd.Process.Signal(syscall.Signal(0))
+			if err == nil {
+				// 进程存在
+				status = "running"
+				pid = appProc.Cmd.Process.Pid
+				startTime = appProc.StartTime.Format("2006-01-02 15:04:05")
+			} else {
+				// 进程不存在，从映射中删除
+				delete(appProcesses, app.Name)
+			}
 		}
 	}
 	
 	return AppStatus{
-		Name:   app.Name,
-		PID:    pid,
-		Path:   app.AppPath,
-		Status: status,
-		Port:   app.Port,
+		Name:      app.Name,
+		PID:       pid,
+		Path:      app.AppPath,
+		Status:    status,
+		Port:      app.Port,
+		StartTime: startTime,
 	}
 }

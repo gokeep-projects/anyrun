@@ -6,11 +6,23 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/apps': 'http://localhost:8081',
-      '/start': 'http://localhost:8081',
-      '/stop': 'http://localhost:8081',
-      '/config': 'http://localhost:8081',
-      '/config/save': 'http://localhost:8081',
+      '/api/apps': 'http://localhost:8081',
+      '/api/start': 'http://localhost:8081',
+      '/api/stop': 'http://localhost:8081',
+      '/api/config': 'http://localhost:8081',
+      '/api/config/save': 'http://localhost:8081',
+      '/api/apps/startall': 'http://localhost:8081',
+      '/api/apps/stopall': 'http://localhost:8081',
+      '/api/apps/restartall': 'http://localhost:8081',
+    },
+  },
+  build: {
+    outDir: 'dist',
+    assetsDir: 'assets',
+    rollupOptions: {
+      output: {
+        manualChunks: undefined,
+      },
     },
   },
 });
